@@ -29,3 +29,7 @@ Kelime Aralığı: Kullanıcılar bir başlangıç ve bitiş kelimesi belirleyeb
 Satır Numarası Seçimi: Kullanıcılar doğrudan bir satır numarası girerek, her PDF sayfası için bu satırın içeriğini dosya adı olarak kullanabilirler.
 
 Bu seçenekler, her sayfanın içeriğine dayalı olarak çıktı dosyalarının isimlendirilmesinde esneklik sağlayarak, her bir sertifikayı daha kolay organize etmeyi ve tanımlamayı sağlar.
+![image](https://github.com/user-attachments/assets/77c37986-f96a-46cd-8349-39ca7f4e0e3f)
+![image](https://github.com/user-attachments/assets/8308b22d-fd47-451b-a130-6b3e0067ca90)
+![image](https://github.com/user-attachments/assets/c6c0e97e-9446-4b1f-a655-3a6bbbcacbd8)
+
