@@ -1,0 +1,165 @@
+from PyPDF2 import PdfReader, PdfWriter
+import os
+from tkinter import Tk, filedialog, simpledialog, messagebox, Toplevel, Listbox, Scrollbar, Button, Label, Entry, StringVar, END, BooleanVar, Checkbutton
+
+# PDF dosyasından her sayfanın kullanıcının seçtiği satırı al ve dosyayı bu satıra göre kaydet
+def save_pages_by_identifier(pdf_path, output_folder, event_name, identifier_extractor):
+    with open(pdf_path, 'rb') as file:
+        pdf_reader = PdfReader(file)
+        total_pages = len(pdf_reader.pages)
+
+        # Her sayfa için işlemleri gerçekleştir
+        for page_num in range(total_pages):
+            page = pdf_reader.pages[page_num]
+            page_text = page.extract_text()
+
+            # Sayfadaki metni satırlarına böl
+            lines = page_text.split('\n')
+
+            # Kullanıcının seçtiği identifier'ı al
+            identifier = identifier_extractor(lines, page_num)
+
+            # Etkinlik adı ekle (eğer varsa)
+            if event_name:
+                identifier = f"{identifier} {event_name}"
+
+            # Geçersiz karakterleri temizle ve dosya adı oluştur
+            identifier = ''.join(c for c in identifier if c.isalnum() or c in (' ', '_')).rstrip()
+            output_pdf_path = os.path.join(output_folder, f"{identifier}.pdf")
+            file_index = 1
+            while os.path.exists(output_pdf_path):
+                output_pdf_path = os.path.join(output_folder, f"{identifier}({file_index}).pdf")
+                file_index += 1
+
+            # PDF'yi kaydet
+            pdf_writer = PdfWriter()
+            pdf_writer.add_page(page)
+            with open(output_pdf_path, 'wb') as output_file:
+                pdf_writer.write(output_file)
+
+            print(f"Sayfa {page_num + 1} ayrı bir dosyaya kaydedildi: {output_pdf_path}")
+
+# Kullanıcıdan belirli bir satır veya kelime aralığı seçmesini sağlayan pencere
+def get_identifier_extractor(pdf_path):
+    def extractor_window():
+        window = Toplevel()
+        window.title("Satır Seçimi")
+        window.geometry("600x500")
+
+        # Scrollbar ve Listbox ekleyerek sayfa metinlerini göster
+        scrollbar = Scrollbar(window)
+        scrollbar.pack(side="right", fill="y")
+
+        listbox = Listbox(window, yscrollcommand=scrollbar.set, selectmode="single")
+        listbox.pack(expand=True, fill="both")
+
+        with open(pdf_path, 'rb') as file:
+            pdf_reader = PdfReader(file)
+            first_page_text = pdf_reader.pages[0].extract_text()
+            lines = first_page_text.split('\n')
+            for idx, line in enumerate(lines):
+                listbox.insert(END, f"{idx + 1}: {line}")
+
+        scrollbar.config(command=listbox.yview)
+
+        # Kullanıcının belirli bir kelime aralığı seçmesi için giriş alanı
+        range_label = Label(window, text="Belirli kelimeler arasındaki bölümü seçin (örn: 'başlangıç', 'bitiş') veya satır numarası girin:")
+        range_label.pack()
+
+        start_word = Entry(window)
+        start_word.pack()
+        end_word = Entry(window)
+        end_word.pack()
+
+        # Satır numarası giriş alanı
+        line_number_label = Label(window, text="Satır numarasını girin (örn: '1', '2'):")
+        line_number_label.pack()
+        line_number_entry = Entry(window)
+        line_number_entry.pack()
+
+        # Seçimi onaylama ve pencereyi kapatma
+        def confirm_selection():
+            selected_line_index = listbox.curselection()
+            line_number = line_number_entry.get().strip()
+
+            if line_number.isdigit() and 1 <= int(line_number) <= len(lines):
+                # Satır numarası kullanarak seçim yapıldı
+                selected_line = lines[int(line_number) - 1]
+                window.result = lambda lines, page_num: selected_line.strip()
+            elif selected_line_index:
+                # Listbox üzerinden seçim yapıldı
+                selected_line = listbox.get(selected_line_index).split(': ', 1)[-1]
+                window.result = lambda lines, page_num: selected_line.strip()
+            elif start_word.get() or end_word.get():
+                # Belirli kelimeler arasındaki bölümü seçmek için giriş yapıldı
+                start = start_word.get().strip()
+                end = end_word.get().strip()
+                def extractor(lines, page_num):
+                    for line in lines:
+                        start_index = line.find(start) + len(start) if start in line else None
+                        end_index = line.find(end) if end in line else None
+
+                        if start and end and start_index is not None and end_index is not None and start_index < end_index:
+                            return line[start_index:end_index].strip()
+                        elif start and start_index is not None:
+                            return line[start_index:].strip()
+                        elif end and end_index is not None:
+                            return line[:end_index].strip()
+                    return f"page_{page_num + 1}"
+                window.result = extractor
+            else:
+                # Hiçbir seçim yapılmadıysa varsayılan değer kullan
+                messagebox.showerror("Hata", "Lütfen bir satır numarası, kelime aralığı veya listeden bir satır seçin.")
+                return
+
+            window.quit()  # Pencereyi kapat ve ana döngüyü sonlandır
+            window.destroy()
+
+        confirm_button = Button(window, text="Seçimi Onayla", command=confirm_selection)
+        confirm_button.pack()
+
+        window.mainloop()
+        return getattr(window, 'result', lambda lines, page_num: f"page_{page_num + 1}")
+
+    return extractor_window()
+
+if __name__ == "__main__":
+    # Kullanıcıya PDF dosyasını sürükle-bırak veya dosya seçme seçenekleri sun
+    Tk().withdraw()  # Tkinter GUI'yi gizle
+    input_pdf = filedialog.askopenfilename(title="Bir PDF dosyası seçin", filetypes=[("PDF files", "*.pdf")])
+
+    if not input_pdf:
+        messagebox.showerror("Hata", "PDF dosyası seçilmedi. Program sonlandırılıyor...")
+        exit()
+
+    # Varsayılan klasör ismi
+    default_folder_name = "Sertifika_Cıktıları"
+
+    # Kullanıcıdan etkinlik adı al (boş bırakılabilir)
+    event_name = simpledialog.askstring("Etkinlik Adı", "Etkinlik adı (boş bırakabilirsiniz):")
+    if event_name is None:
+        event_name = ""
+
+    # Kullanıcıdan çıktı klasörünü seçmesini iste
+    output_folder = filedialog.askdirectory(title="Çıktı klasörünü seçin")
+    if not output_folder:
+        messagebox.showerror("Hata", "Çıktı klasörü seçilmedi. Program sonlandırılıyor...")
+        exit()
+
+    # Masaüstü gibi varsayılan bir klasör seçildiğinde uyarı ver ve alt klasör oluşturmayı öner
+    output_folder = os.path.normpath(output_folder)
+    if os.path.basename(output_folder).lower() in ["desktop", "masaüstü"]:
+        subfolder_name = event_name if event_name else default_folder_name
+        messagebox.showwarning("Geçersiz Klasör", f"Masaüstü klasörüne kaydetmek riskli olabilir. '{subfolder_name}' adında bir alt klasör oluşturulacak.")
+        output_folder = os.path.join(output_folder, subfolder_name)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
+    # Çıktı klasörünü oluştur (eğer mevcut değilse)
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Kullanıcıdan satır veya kelime aralığı seçmesini iste
+    identifier_extractor = get_identifier_extractor(input_pdf)
+
+    save_pages_by_identifier(input_pdf, output_folder, event_name, identifier_extractor)
